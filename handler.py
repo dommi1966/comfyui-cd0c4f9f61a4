@@ -7,7 +7,7 @@ def handler(job):
     job_input = job['input']
     
     # Carica il workflow JSON
-    with open('/comfyui/api-workflow.json', 'r') as f:
+    with open('api-workflow.json', 'r') as f:
         workflow = json.load(f)
     
     # Sostituisce l'immagine di input se fornita nella chiamata API
