@@ -86,4 +86,56 @@ def handler(job):
     except Exception as e:
         return {"error": f"Errore nella lettura del file finale: {str(e)}"}
 
+runpod.serverless.start({"handler": handler})    # Carica il workflow JSON dal container
+    with open('/comfyui/api-workflow.json', 'r') as f:
+        workflow = json.load(f)
+
+    # Inietta l'immagine principale se presente (per Product Placement)
+    if 'image_1' in job_input and '12' in workflow:
+        workflow['12']['inputs']['image'] = job_input['image_1']
+        
+    # Inietta il testo se presente
+    if 'prompt' in job_input:
+        if '15' in workflow:
+            if 'text' in workflow['15']['inputs']:
+                workflow['15']['inputs']['text'] = job_input['prompt']
+            elif 'prompt' in workflow['15']['inputs']:
+                workflow['15']['inputs']['prompt'] = job_input['prompt']
+
+    # 1. Invia il workflow a ComfyUI locale
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/prompt", 
+        data=json.dumps({"prompt": workflow}).encode('utf-8'), 
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read())
+            prompt_id = result.get('prompt_id') # ComfyUI ci dice l'ID di questa coda
+    except Exception as e:
+        return {"error": f"Errore durante l'avvio di ComfyUI: {str(e)}"}
+
+    if not prompt_id:
+        return {"error": "Nessun prompt_id restituito da ComfyUI"}
+
+    # 2. Aspetta che ComfyUI finisca il rendering e trova il nome del file
+    filename = get_latest_output(prompt_id)
+    
+    if not filename:
+        return {"error": "Lavoro completato ma nessun file trovato nell'output."}
+
+    # 3. Leggi il file dal disco del pod e convertilo in Base64 per inviarlo al sito
+    file_path = os.path.join('/comfyui/output', filename)
+    try:
+        with open(file_path, "rb") as media_file:
+            encoded_string = base64.b64encode(media_file.read()).decode('utf-8')
+            
+        return {
+            "file_name": filename,
+            "file_base64": encoded_string
+        }
+    except Exception as e:
+        return {"error": f"Errore nella lettura del file finale: {str(e)}"}
+
 runpod.serverless.start({"handler": handler})
